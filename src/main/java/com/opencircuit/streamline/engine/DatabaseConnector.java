@@ -7,73 +7,64 @@ import java.util.HashMap;
 class DatabaseConnector {
 
     private Connection connection;
-    private HashMap<String, String> dataDictionary;
+    private final String testDatabasePath;
+    private final String resultsDatabasePath;
+    private final HashMap<String, String> dataDictionary;
+    private String executionID;
+    private String testCaseID;
 
-    void establishConnection(String databasePath) {
+    DatabaseConnector(String scriptDirectory) {
+
+        testDatabasePath = scriptDirectory + "TestCaseData.db";
+        resultsDatabasePath = scriptDirectory + "TestCaseResults.db";
+        dataDictionary = new HashMap<>();
+    }
+
+    void setExecutionID(String executionID) {
+
+        this.executionID = executionID;
+    }
+
+    void setTestCaseID(String testCaseID) {
+
+        this.testCaseID = testCaseID;
+    }
+
+    void establishTestDatabaseConnection() {
 
         try {
 
-            String url = "jdbc:sqlite:" + databasePath;
+            String url = "jdbc:sqlite:" + testDatabasePath;
             connection = DriverManager.getConnection(url);
-            dataDictionary = new HashMap<>();
+            dataDictionary.clear();
 
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    HashMap<String, String> executeTestCaseDataSelectQuery(String testCaseID) {
+    void establishResultsDatabaseConnection() {
+
+        try {
+
+            String url = "jdbc:sqlite:" + resultsDatabasePath;
+            connection = DriverManager.getConnection(url);
+            dataDictionary.clear();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    HashMap<String, String> retrieveTestCaseData() {
 
         ArrayList<String> tableList = getTableList();
-        dataDictionary.clear();
 
         for (String tableName : tableList) {
-            executeSelectQueryForTable(tableName, testCaseID);
+            executeSelectQueryForTable(tableName);
         }
 
         return dataDictionary;
-    }
-
-    void executeUpdateQuery(String query) {
-
-        try {
-
-            Statement updateStatement = connection.createStatement();
-            updateStatement.executeUpdate(query);
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    void closeConnection() {
-
-        try {
-            connection.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void executeSelectQueryForTable(String tableName, String testCaseID) {
-
-        try {
-
-            String query = "SELECT * FROM [" + tableName + "] WHERE [TEST_CASE_ID] = '" + testCaseID + "'";
-
-            Statement statement = connection.createStatement();
-            ResultSet resultSet = statement.executeQuery(query);
-            ArrayList<String> columnList = getColumnListList(resultSet);
-
-            while (resultSet.next()) {
-                collectQueriedData(resultSet, tableName, columnList);
-            }
-
-            resultSet.close();
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 
     private ArrayList<String> getTableList() {
@@ -82,12 +73,8 @@ class DatabaseConnector {
 
         try {
 
-            ResultSet resultSet;
-            resultSet = connection.getMetaData().getTables(
-                    null,
-                    null,
-                    null,
-                    null);
+            ResultSet resultSet = connection.getMetaData().getTables(
+                    null,null,null,null);
 
             while (resultSet.next()) {
                 String tableName = resultSet.getString("TABLE_NAME");
@@ -99,6 +86,22 @@ class DatabaseConnector {
         }
 
         return tableList;
+    }
+
+    private void executeSelectQueryForTable(String tableName) {
+
+        try {
+
+            String query = "SELECT * FROM [" + tableName + "] WHERE [TEST_CASE_ID] = '" + testCaseID + "'";
+
+            Statement statement = connection.createStatement();
+            ResultSet resultSet = statement.executeQuery(query);
+            ArrayList<String> columnList = getColumnListList(resultSet);
+            loopThroughResultSet(tableName, resultSet, columnList);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private ArrayList<String> getColumnListList(ResultSet resultSet) {
@@ -120,7 +123,22 @@ class DatabaseConnector {
         return columnList;
     }
 
-    private void collectQueriedData(ResultSet resultSet, String tableName, ArrayList<String> columnList) {
+    private void loopThroughResultSet(String tableName, ResultSet resultSet, ArrayList<String> columnList) {
+
+        try {
+
+            while (resultSet.next()) {
+                loopThroughRecordDataByColumn(resultSet, tableName, columnList);
+            }
+
+            resultSet.close();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void loopThroughRecordDataByColumn(ResultSet resultSet, String tableName, ArrayList<String> columnList) {
 
         try {
 
@@ -141,10 +159,42 @@ class DatabaseConnector {
 
             if (dataValue == null) { dataValue = ""; }
             String dictionaryKey = tableName + "." + columnName;
-            dataDictionary.put(dictionaryKey, dataValue);
+            dataDictionary.put(dictionaryKey.toLowerCase(), dataValue);
 
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    void updateMainExecutionTable(String columnName, String dataValue) {
+
+        try {
+
+            String query = "UPDATE [Main] SET [" + columnName + "] = '" + dataValue + "' " +
+                    "WHERE [Execution_ID] = '" + executionID + "' AND [Test_Case_ID] = '" + testCaseID + "'";
+
+            executeUpdateQuery(query);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void executeUpdateQuery(String query) {
+
+        try {
+
+            Statement updateStatement = connection.createStatement();
+            updateStatement.executeUpdate(query);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    void closeConnection() {
+
+        try { connection.close(); }
+        catch (Exception e) { e.printStackTrace(); }
     }
 }
